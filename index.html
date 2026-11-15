@@ -111,6 +111,15 @@ footer a{color:var(--purple);font-weight:500}
 .modal-actions{display:flex;gap:10px;justify-content:flex-end}
 .modal-actions .btn{padding:10px 18px;font-size:14px}
 
+.notice-ticker{display:none;align-items:center;background:#c0392b;color:#fff;overflow:hidden}
+.notice-ticker.show{display:flex}
+.notice-ticker-badge{flex-shrink:0;background:#fff;color:#c0392b;font-size:10px;font-weight:800;letter-spacing:.04em;padding:3px 10px;border-radius:20px;margin:0 12px}
+.notice-ticker-viewport{flex:1;overflow:hidden;padding:10px 16px 10px 0}
+.notice-ticker-track{display:flex;width:max-content;animation:notice-ticker-scroll 22s linear infinite}
+.notice-ticker-text{white-space:nowrap;font-size:13px;font-weight:600;padding-right:64px}
+@keyframes notice-ticker-scroll{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+@media(prefers-reduced-motion:reduce){.notice-ticker-track{animation:none}}
+
 .video-wrap{max-width:760px;margin:0 auto;border-radius:var(--r2);overflow:hidden;box-shadow:0 20px 50px rgba(0,0,0,.15);border:1px solid var(--border);background:#000}
 .video-wrap video{display:block;width:100%;max-height:70vh;background:#000}
 
@@ -134,6 +143,16 @@ footer a{color:var(--purple);font-weight:500}
 </style>
 </head>
 <body>
+
+<div class="notice-ticker" id="notice-ticker">
+  <div class="notice-ticker-badge">Notice</div>
+  <div class="notice-ticker-viewport">
+    <div class="notice-ticker-track">
+      <span class="notice-ticker-text" id="notice-ticker-text"></span>
+      <span class="notice-ticker-text" aria-hidden="true" id="notice-ticker-text-2"></span>
+    </div>
+  </div>
+</div>
 
 <div class="wrap">
   <nav>
@@ -322,8 +341,22 @@ footer a{color:var(--purple);font-weight:500}
 </footer>
 
 <script>
-const APK_DOWNLOAD_URL = "PASTE_YOUR_GOOGLE_DRIVE_LINK_HERE";
+// Always points at the newest GitHub Release. Upload each new APK to
+// github.com/DevAltair05/paperless-app-web/releases named exactly
+// "paperless.apk" and this link picks it up, no code change needed.
+const APK_DOWNLOAD_URL = "https://github.com/DevAltair05/paperless-app-web/releases/latest/download/paperless.apk";
 document.getElementById('apk-download-btn').href = APK_DOWNLOAD_URL;
+
+// Shared Firebase project — same one the Paperless admin panel and app use.
+firebase.initializeApp({
+  apiKey: "AIzaSyC8c91MqQwjgJzSM0TSTBXgAa_ZBk4TCUQ",
+  authDomain: "paperless-app-deb17.firebaseapp.com",
+  projectId: "paperless-app-deb17",
+  storageBucket: "paperless-app-deb17.firebasestorage.app",
+  messagingSenderId: "467939667716",
+  appId: "1:467939667716:web:b6978fee15f6b31b716a51"
+});
+const db = firebase.firestore();
 
 // Mobile nav menu toggle
 (function(){
@@ -434,20 +467,40 @@ function renderReviews(reviews){
 
 (async function loadReviews(){
   try{
-    firebase.initializeApp({
-      apiKey: "AIzaSyC8c91MqQwjgJzSM0TSTBXgAa_ZBk4TCUQ",
-      authDomain: "paperless-app-deb17.firebaseapp.com",
-      projectId: "paperless-app-deb17",
-      storageBucket: "paperless-app-deb17.firebasestorage.app",
-      messagingSenderId: "467939667716",
-      appId: "1:467939667716:web:b6978fee15f6b31b716a51"
-    });
-    const doc = await firebase.firestore().collection('app_config').doc('reviews').get();
+    const doc = await db.collection('app_config').doc('reviews').get();
     const entries = doc.exists ? doc.data().entries : null;
     renderReviews(Array.isArray(entries) && entries.length ? entries : REVIEWS_FALLBACK);
   }catch(e){
     console.warn('Could not load live reviews, showing fallback:', e);
     renderReviews(REVIEWS_FALLBACK);
+  }
+})();
+
+// --- System notice ticker ---------------------------------------------------
+// Same admin-controlled switch that puts the web app and mobile app into
+// maintenance mode (app_config/maintenance, toggled from admin.html →
+// Configuration → Server maintenance). Here on the launcher it isn't a full
+// block screen, it's a scrolling headline bar across the top, like a news
+// ticker, so visitors see the notice without the page being unusable.
+(async function loadSystemNotice(){
+  try{
+    const doc = await db.collection('app_config').doc('maintenance').get();
+    const cfg = doc.exists ? doc.data() : null;
+    if(!cfg || !cfg.enabled) return;
+
+    const message = (cfg.message || "We're making some improvements and will be back shortly.").trim();
+    const full = cfg.eta ? message + '  •  Back around ' + cfg.eta : message;
+
+    const ticker = document.getElementById('notice-ticker');
+    const text1 = document.getElementById('notice-ticker-text');
+    const text2 = document.getElementById('notice-ticker-text-2');
+    if(!ticker || !text1 || !text2) return;
+
+    text1.textContent = full;
+    text2.textContent = full;
+    ticker.classList.add('show');
+  }catch(e){
+    console.warn('Could not load system notice:', e);
   }
 })();
 </script>
